@@ -29,6 +29,7 @@ Thumbs.db
 # Ignore all files in Dataset except JSON analysis files
 /vbs-video-retrieval-system/Dataset/**/*
 !/vbs-video-retrieval-system/Dataset/**/video_analysis_report.json
+!/vbs-video-retrieval-system/Dataset/**/00001_ffmpeg_shot_log
 
 # But do NOT ignore the Dataset directory itself
 !vbs-video-retrieval-system/Dataset/
