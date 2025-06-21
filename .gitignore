@@ -1,0 +1,37 @@
+# Ignore Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+venv/
+ENV/
+
+# Ignore Node modules and build output
+node_modules/
+dist/
+build/
+
+# Ignore OS junk
+.DS_Store
+Thumbs.db
+
+# Ignore Docker artifacts
+*.pid
+*.log
+
+# Ignore all video files in Dataset
+/vbs-video-retrieval-system/Dataset/**/*.mp4
+/vbs-video-retrieval-system/Dataset/**/*.avi
+/vbs-video-retrieval-system/Dataset/**/*.mov
+/vbs-video-retrieval-system/Dataset/**/*.mkv
+
+# Ignore all files in Dataset except JSON analysis files
+/vbs-video-retrieval-system/Dataset/**/*
+!/vbs-video-retrieval-system/Dataset/**/video_analysis_report.json
+
+# But do NOT ignore the Dataset directory itself
+!vbs-video-retrieval-system/Dataset/
+
+# Do NOT ignore the frontend directory
+!frontend/ 
