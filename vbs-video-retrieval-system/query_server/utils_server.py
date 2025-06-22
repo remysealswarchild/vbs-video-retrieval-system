@@ -86,3 +86,180 @@ def extract_keywords_from_sentence(sentence: str) -> List[str]:
             keywords.append(word)
     
     return keywords
+
+def calculate_text_relevance_score(extracted_words: List[str], detected_objects: List[str], filename: str) -> float:
+    """
+    Calculate text relevance score based on word frequency and importance.
+    
+    Args:
+        extracted_words: List of words from OCR
+        detected_objects: List of detected objects
+        filename: Video filename
+        
+    Returns:
+        float: Relevance score between 0.0 and 1.0
+    """
+    if not extracted_words and not detected_objects:
+        return 0.0
+    
+    # Define importance weights
+    word_weight = 0.6  # OCR words are most important
+    object_weight = 0.3  # Detected objects are important
+    filename_weight = 0.1  # Filename is least important
+    
+    # Calculate word diversity (more unique words = higher score)
+    unique_words = len(set(extracted_words)) if extracted_words else 0
+    total_words = len(extracted_words) if extracted_words else 0
+    
+    # Calculate object diversity
+    unique_objects = len(set(detected_objects)) if detected_objects else 0
+    total_objects = len(detected_objects) if detected_objects else 0
+    
+    # Calculate filename relevance (simple check for meaningful content)
+    filename_relevance = 0.0
+    if filename and len(filename) > 5:  # More than just numbers
+        filename_relevance = 0.5
+    
+    # Calculate weighted score
+    word_score = (unique_words / max(total_words, 1)) * word_weight if total_words > 0 else 0
+    object_score = (unique_objects / max(total_objects, 1)) * object_weight if total_objects > 0 else 0
+    
+    total_score = word_score + object_score + (filename_relevance * filename_weight)
+    
+    return min(total_score, 1.0)  # Cap at 1.0
+
+def calculate_object_relevance_score(detected_objects: List[str]) -> float:
+    """
+    Calculate object relevance score based on object diversity and confidence.
+    
+    Args:
+        detected_objects: List of detected objects
+        
+    Returns:
+        float: Relevance score between 0.0 and 1.0
+    """
+    if not detected_objects:
+        return 0.0
+    
+    # More diverse objects = higher score
+    unique_objects = len(set(detected_objects))
+    total_objects = len(detected_objects)
+    
+    # Calculate diversity score
+    diversity_score = unique_objects / max(total_objects, 1)
+    
+    # Bonus for having multiple objects (interaction potential)
+    interaction_bonus = min(unique_objects * 0.1, 0.3)
+    
+    return min(diversity_score + interaction_bonus, 1.0)
+
+def calculate_color_relevance_score(color_rgb: List[int]) -> float:
+    """
+    Calculate color relevance score based on color characteristics.
+    
+    Args:
+        color_rgb: RGB color values [r, g, b]
+        
+    Returns:
+        float: Relevance score between 0.0 and 1.0
+    """
+    if not color_rgb or len(color_rgb) != 3:
+        return 0.0
+    
+    r, g, b = color_rgb
+    
+    # Calculate color saturation (more saturated = more interesting)
+    max_val = max(r, g, b)
+    min_val = min(r, g, b)
+    
+    if max_val == 0:
+        return 0.0
+    
+    saturation = (max_val - min_val) / max_val
+    
+    # Calculate brightness (avoid too dark or too bright)
+    brightness = (r + g + b) / (3 * 255)
+    
+    # Prefer medium brightness and high saturation
+    brightness_score = 1.0 - abs(brightness - 0.5) * 2  # Peak at 0.5 brightness
+    saturation_score = saturation
+    
+    # Combined score
+    return (brightness_score * 0.4 + saturation_score * 0.6)
+
+def update_moment_scores(conn, moment_id: str, extracted_words: List[str], 
+                        detected_objects: List[str], filename: str, color_rgb: List[int]):
+    """
+    Update relevance scores for a specific moment in the database.
+    
+    Args:
+        conn: Database connection
+        moment_id: Moment ID to update
+        extracted_words: List of extracted words
+        detected_objects: List of detected objects
+        filename: Video filename
+        color_rgb: RGB color values
+    """
+    try:
+        cursor = conn.cursor()
+        
+        # Calculate individual scores
+        text_score = calculate_text_relevance_score(extracted_words, detected_objects, filename)
+        object_score = calculate_object_relevance_score(detected_objects)
+        color_score = calculate_color_relevance_score(color_rgb)
+        
+        # Calculate overall score (weighted average)
+        overall_score = (text_score * 0.5 + object_score * 0.3 + color_score * 0.2)
+        
+        # Update database
+        cursor.execute("""
+            UPDATE video_moments 
+            SET text_relevance_score = %s,
+                object_relevance_score = %s,
+                color_relevance_score = %s,
+                overall_relevance_score = %s
+            WHERE moment_id = %s
+        """, (text_score, object_score, color_score, overall_score, moment_id))
+        
+        conn.commit()
+        
+    except Exception as e:
+        print(f"Error updating scores for moment {moment_id}: {e}")
+        conn.rollback()
+
+def update_all_moment_scores(conn):
+    """
+    Update relevance scores for all moments in the database.
+    
+    Args:
+        conn: Database connection
+    """
+    try:
+        cursor = conn.cursor()
+        
+        # Get all moments
+        cursor.execute("""
+            SELECT moment_id, extracted_search_words, detected_object_names, 
+                   v.original_filename, average_color_rgb
+            FROM video_moments m
+            JOIN videos v ON m.video_id = v.video_id
+        """)
+        
+        moments = cursor.fetchall()
+        print(f"Updating scores for {len(moments)} moments...")
+        
+        for moment in moments:
+            moment_id = moment[0]
+            extracted_words = moment[1] or []
+            detected_objects = moment[2] or []
+            filename = moment[3] or ""
+            color_rgb = moment[4] or [0, 0, 0]
+            
+            update_moment_scores(conn, moment_id, extracted_words, 
+                               detected_objects, filename, color_rgb)
+        
+        print("Score update completed!")
+        
+    except Exception as e:
+        print(f"Error updating all scores: {e}")
+        conn.rollback()

@@ -195,13 +195,14 @@ def search_by_text():
             """)
             params.extend([f'%{keyword}%', f'%{keyword}%', f'%{keyword}%'])
         
-        # Use OR to match any of the keywords
+        # Use OR to match any of the keywords and order by pre-computed text relevance score
         sql = f"""
-            SELECT m.*, v.original_filename, v.compressed_filename, v.duration_seconds
+            SELECT m.*, v.original_filename, v.compressed_filename, v.duration_seconds,
+                   m.text_relevance_score as score
             FROM video_moments m
             JOIN videos v ON m.video_id = v.video_id
             WHERE {' OR '.join(where_clauses)}
-            ORDER BY m.timestamp_seconds
+            ORDER BY m.text_relevance_score DESC, m.timestamp_seconds
             LIMIT %s
         """
         params.append(limit)
@@ -209,26 +210,14 @@ def search_by_text():
         cursor.execute(sql, params)
         results = cursor.fetchall()
 
-        formatted = []
-        for row in results:
-            match_count = 0
-            total_keywords = len(keywords)
-            # Check each keyword in the relevant fields
-            for kw in keywords:
-                if 'extracted_search_words' in row and row['extracted_search_words'] and kw in row['extracted_search_words']:
-                    match_count += 1
-                elif 'detected_object_names' in row and row['detected_object_names'] and kw in row['detected_object_names']:
-                    match_count += 1
-                elif 'original_filename' in row and row['original_filename'] and kw in row['original_filename'].lower():
-                    match_count += 1
-            row['score'] = match_count / total_keywords if total_keywords else 0
-            formatted.append(transform_result(row))
+        formatted = [transform_result(row) for row in results]
 
         return jsonify({
             'results': formatted, 
             'count': len(formatted),
             'extracted_keywords': keywords,
-            'query': query
+            'query': query,
+            'score_type': 'pre_computed_text_relevance'
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500

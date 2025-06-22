@@ -38,6 +38,12 @@ CREATE TABLE IF NOT EXISTS video_moments (
     extracted_search_words TEXT[], -- Array of words for text search
     average_color_rgb INTEGER[3],  -- RGB values as array
     
+    -- Pre-computed relevance scores for different search types
+    text_relevance_score FLOAT DEFAULT 0.0,  -- Pre-computed text search relevance
+    object_relevance_score FLOAT DEFAULT 0.0, -- Pre-computed object search relevance
+    color_relevance_score FLOAT DEFAULT 0.0,  -- Pre-computed color search relevance
+    overall_relevance_score FLOAT DEFAULT 0.0, -- Combined relevance score
+    
     -- Detailed features (JSONB for complex search)
     detailed_features JSONB,  -- Your detected_objects_detailed, extracted_text_detailed, etc.
     
