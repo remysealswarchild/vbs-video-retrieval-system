@@ -21,6 +21,8 @@ export function useSearchVideos() {
   const [results, setResults] = useState([]);        // search results
   const [loading, setLoading] = useState(false);     // loading spinner state
   const [error, setError] = useState<string | null>(null); // error state
+  const [extractedKeywords, setExtractedKeywords] = useState<string[]>([]); // extracted keywords
+  const [originalQuery, setOriginalQuery] = useState<string>(''); // original user query
 
   /**
    * Main search function that routes to different backend endpoints
@@ -30,6 +32,8 @@ export function useSearchVideos() {
     setLoading(true);
     setError(null);
     setResults([]);
+    setExtractedKeywords([]);
+    setOriginalQuery('');
 
     try {
       const payload: any = {};
@@ -44,6 +48,14 @@ export function useSearchVideos() {
       if (criteria.embedding) payload.embedding = criteria.embedding;
       const res = await API.post('/search/multimodal', payload);
       setResults(res.data.results || []);
+      
+      // Handle extracted keywords if present in response
+      if (res.data.extracted_keywords) {
+        setExtractedKeywords(res.data.extracted_keywords);
+      }
+      if (res.data.original_text) {
+        setOriginalQuery(res.data.original_text);
+      }
     } catch (err: any) {
       setError(err.message || "Search failed");
     } finally {
@@ -55,6 +67,8 @@ export function useSearchVideos() {
     results,
     loading,
     error,
+    extractedKeywords,
+    originalQuery,
     searchWithCriteria
   };
 }

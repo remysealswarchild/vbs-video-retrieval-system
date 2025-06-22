@@ -5,9 +5,10 @@ from flask_cors import CORS
 import psycopg2.extras
 from datetime import datetime
 import os
+import json
 
 from db_utils import get_db_connection, fetch_all_moments_with_colors_and_embeddings
-from utils_server import color_distance, cosine_similarity_score, parse_json_field
+from utils_server import color_distance, cosine_similarity_score, parse_json_field, extract_keywords_from_sentence
 
 # Import DRES client
 try:
@@ -171,25 +172,64 @@ def search_by_text():
     if not query:
         return jsonify({'error': 'Missing query'}), 400
 
+    # Extract keywords from the user's sentence
+    keywords = extract_keywords_from_sentence(query)
+    
+    if not keywords:
+        return jsonify({'error': 'No meaningful keywords found in query'}), 400
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        sql = """
+        
+        # Build SQL query to search for any of the extracted keywords
+        where_clauses = []
+        params = []
+        
+        for keyword in keywords:
+            # Search in extracted_search_words, detected_object_names, and filename
+            where_clauses.append("""
+                (array_to_string(m.extracted_search_words, ' ') ILIKE %s
+                 OR array_to_string(m.detected_object_names, ' ') ILIKE %s
+                 OR v.original_filename ILIKE %s)
+            """)
+            params.extend([f'%{keyword}%', f'%{keyword}%', f'%{keyword}%'])
+        
+        # Use OR to match any of the keywords
+        sql = f"""
             SELECT m.*, v.original_filename, v.compressed_filename, v.duration_seconds
             FROM video_moments m
             JOIN videos v ON m.video_id = v.video_id
-            WHERE array_to_string(m.extracted_search_words, ' ') ILIKE %s
-               OR array_to_string(m.detected_object_names, ' ') ILIKE %s
-               OR v.original_filename ILIKE %s
+            WHERE {' OR '.join(where_clauses)}
             ORDER BY m.timestamp_seconds
             LIMIT %s
         """
-        cursor.execute(sql, [f'%{query}%', f'%{query}%', f'%{query}%', limit])
+        params.append(limit)
+        
+        cursor.execute(sql, params)
         results = cursor.fetchall()
 
-        formatted = [transform_result(row) for row in results]
+        formatted = []
+        for row in results:
+            match_count = 0
+            total_keywords = len(keywords)
+            # Check each keyword in the relevant fields
+            for kw in keywords:
+                if 'extracted_search_words' in row and row['extracted_search_words'] and kw in row['extracted_search_words']:
+                    match_count += 1
+                elif 'detected_object_names' in row and row['detected_object_names'] and kw in row['detected_object_names']:
+                    match_count += 1
+                elif 'original_filename' in row and row['original_filename'] and kw in row['original_filename'].lower():
+                    match_count += 1
+            row['score'] = match_count / total_keywords if total_keywords else 0
+            formatted.append(transform_result(row))
 
-        return jsonify({'results': formatted, 'count': len(formatted)})
+        return jsonify({
+            'results': formatted, 
+            'count': len(formatted),
+            'extracted_keywords': keywords,
+            'query': query
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
@@ -279,10 +319,25 @@ def multimodal_search():
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         where_clauses = []
         params = []
+        keywords = []
 
         if text:
-            where_clauses.append("(array_to_string(m.extracted_search_words, ' ') ILIKE %s OR array_to_string(m.detected_object_names, ' ') ILIKE %s)")
-            params.extend([f'%{text}%', f'%{text}%'])
+            # Extract keywords from the text input
+            keywords = extract_keywords_from_sentence(text)
+            if keywords:
+                # Build keyword search clauses
+                keyword_clauses = []
+                for keyword in keywords:
+                    keyword_clauses.append("""
+                        (array_to_string(m.extracted_search_words, ' ') ILIKE %s
+                         OR array_to_string(m.detected_object_names, ' ') ILIKE %s
+                         OR v.original_filename ILIKE %s)
+                    """)
+                    params.extend([f'%{keyword}%', f'%{keyword}%', f'%{keyword}%'])
+                
+                # Use OR to match any of the keywords
+                where_clauses.append(f"({' OR '.join(keyword_clauses)})")
+        
         if objects:
             for obj in objects:
                 where_clauses.append("m.detected_object_names @> ARRAY[%s]")
@@ -311,6 +366,18 @@ def multimodal_search():
         results = []
         for row in rows:
             ok = True
+            # Score for text-based search
+            if keywords:
+                match_count = 0
+                total_keywords = len(keywords)
+                for kw in keywords:
+                    if 'extracted_search_words' in row and row['extracted_search_words'] and kw in row['extracted_search_words']:
+                        match_count += 1
+                    elif 'detected_object_names' in row and row['detected_object_names'] and kw in row['detected_object_names']:
+                        match_count += 1
+                    elif 'original_filename' in row and row['original_filename'] and kw in row['original_filename'].lower():
+                        match_count += 1
+                row['score'] = match_count / total_keywords if total_keywords else 0
             if color and row.get('average_color_rgb'):
                 dist = color_distance(color, parse_json_field(row['average_color_rgb']))
                 if dist > color_threshold:
@@ -331,7 +398,14 @@ def multimodal_search():
         if results and results[0].get('score', 0.0) > 0.0:
             results.sort(key=lambda r: -r['score'])
 
-        return jsonify({'results': results, 'count': len(results)})
+        response_data = {'results': results, 'count': len(results)}
+        
+        # Add extracted keywords to response if text search was used
+        if text:
+            response_data['extracted_keywords'] = keywords
+            response_data['original_text'] = text
+
+        return jsonify(response_data)
     except Exception as e:
         app.logger.error(f"Error in multimodal_search: {e}")
         return jsonify({'error': str(e)}), 500
