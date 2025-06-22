@@ -518,3 +518,33 @@ video_path = os.path.join(DATASET_ROOT, relative_path_from_db)
 | Using Docker            | Docker volume path                    | `docker-compose.yml`           |
 | Running locally         | `VIDEO_DATASET_PATH` env variable     | Shell or `.env` file           |
 | Hardcoded path in code  | Use env variable in code              | Python code (backend)          |
+```
+
+---
+
+## 📌 Setting the DATASET_PATH in Data Import Scripts
+
+In the `import_data_fixed.py` (or `import_data.py`) script, you will find a line like:
+
+```python
+DATASET_PATH = r"E:\image and video deep learning\vido project\vbs-video-retrieval-system\Dataset\V3C1-200"  # change according
+```
+
+**You must change this path to match the location of your dataset on your computer.**
+
+### Example
+If your dataset is in `D:\datasets\V3C1-200`, change the line to:
+
+```python
+DATASET_PATH = r"D:\datasets\V3C1-200"
+```
+
+### Tips
+- Always use a raw string (`r"..."`) or double backslashes (`\\`) for Windows paths.
+- For more portability, you can use an environment variable:
+  ```python
+  import os
+  DATASET_PATH = os.environ.get('VIDEO_DATASET_PATH', r"D:\datasets\V3C1-200")
+  ```
+
+---

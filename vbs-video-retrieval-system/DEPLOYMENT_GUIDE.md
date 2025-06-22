@@ -16,6 +16,7 @@ This comprehensive guide will walk you through deploying the VBS Video Retrieval
 8. [Performance Optimization](#-performance-optimization)
 9. [Security Considerations](#-security-considerations)
 10. [Backup and Recovery](#-backup-and-recovery)
+11. [Specifying the Dataset Source Folder](#-specifying-the-dataset-source-folder)
 
 ---
 
@@ -1430,6 +1431,79 @@ curl http://localhost:5000/api/stats
 - Verify all prerequisites are met
 - Ensure proper file permissions
 - Test with minimal dataset first
+
+---
+
+## 📂 Specifying the Dataset Source Folder
+
+To ensure your video data is available to the backend (and included in the Docker image/container), you must point to the correct source folder for your dataset.
+
+### If Using Docker Compose (Recommended)
+- The dataset is mounted into the container using a volume in `docker-compose.yml`:
+  ```yaml
+  volumes:
+    - /absolute/path/to/your/Dataset:/app/dataset:ro
+  ```
+- **Change `/absolute/path/to/your/Dataset`** to the folder on your machine where your video files are stored.
+
+### If Running Locally
+- Set the `VIDEO_DATASET_PATH` environment variable to your dataset folder:
+  ```sh
+  export VIDEO_DATASET_PATH=/absolute/path/to/your/Dataset
+  python query_server/app.py
+  ```
+
+### Where to Change the Path in Code
+
+In the `import_data_fixed.py` (or `import_data.py`) module, the dataset root is typically set like this:
+
+```python
+import os
+
+DATASET_ROOT = os.environ.get('VIDEO_DATASET_PATH', '/app/dataset')
+```
+
+**To use a custom path, you can:**
+- Set the `VIDEO_DATASET_PATH` environment variable before running the script, OR
+- Change the default in the code, for example:
+  ```python
+  DATASET_ROOT = os.environ.get('VIDEO_DATASET_PATH', '/home/username/my_dataset')
+  ```
+
+**Example:**
+```python
+# Change this line in import_data_fixed.py (usually near the top)
+DATASET_ROOT = os.environ.get('VIDEO_DATASET_PATH', '/app/dataset')
+# To use a custom path, e.g.:
+DATASET_ROOT = os.environ.get('VIDEO_DATASET_PATH', '/home/username/my_dataset')
+```
+
+---
+
+## 📌 Setting the DATASET_PATH in Data Import Scripts
+
+In the `import_data_fixed.py` (or `import_data.py`) script, you will find a line like:
+
+```python
+DATASET_PATH = r"E:\image and video deep learning\vido project\vbs-video-retrieval-system\Dataset\V3C1-200"  # change according
+```
+
+**You must change this path to match the location of your dataset on your computer.**
+
+### Example
+If your dataset is in `D:\datasets\V3C1-200`, change the line to:
+
+```python
+DATASET_PATH = r"D:\datasets\V3C1-200"
+```
+
+### Tips
+- Always use a raw string (`r"..."`) or double backslashes (`\\`) for Windows paths.
+- For more portability, you can use an environment variable:
+  ```python
+  import os
+  DATASET_PATH = os.environ.get('VIDEO_DATASET_PATH', r"D:\datasets\V3C1-200")
+  ```
 
 ---
 

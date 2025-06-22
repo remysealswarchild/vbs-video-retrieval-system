@@ -1,3 +1,4 @@
+# Requires Python 3.10
 # ===== VBS VIDEO RETRIEVAL SYSTEM DEPENDENCIES =====
 # This file contains all dependencies for the complete system including:
 # - Backend API server
