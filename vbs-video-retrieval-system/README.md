@@ -466,3 +466,55 @@ CREATE TABLE video_moments (
 ```
 GET /api/videos/{video_id}/{filename}
 ```
+
+---
+
+## 📦 Video Data Inclusion & Configuration
+
+### Where Does the System Look for Video Files?
+
+- **Backend (Flask API):**
+  - The backend expects video files to be in a directory specified by the environment variable `VIDEO_DATASET_PATH`.
+  - By default (in Docker), this is `/app/dataset`.
+  - The backend combines `VIDEO_DATASET_PATH` with relative paths from the database to find the actual video files.
+
+### How to Set Up the Dataset Path
+
+#### **A. Using Docker (Recommended)**
+- Place your dataset in the `vbs-video-retrieval-system/Dataset` directory (or wherever the left side of the Docker volume points).
+- If your dataset is elsewhere, update the volume mapping in `docker-compose.yml`:
+  ```yaml
+  volumes:
+    - /absolute/path/to/your/Dataset:/app/dataset:ro
+  ```
+- No code changes are needed if you use Docker and the volume is set correctly.
+
+#### **B. Running Locally (Not in Docker)**
+- Set the `VIDEO_DATASET_PATH` environment variable to the absolute path of your dataset:
+  ```sh
+  export VIDEO_DATASET_PATH=/absolute/path/to/Dataset
+  python query_server/app.py
+  ```
+- Or add it to a `.env` file if your setup supports it.
+
+#### **C. Hardcoded Paths in Code**
+- If you see any hardcoded paths in the code (e.g., `/app/dataset`), replace them with:
+  ```python
+  os.environ.get("VIDEO_DATASET_PATH", "/app/dataset")
+  ```
+- This makes the code portable and configurable.
+
+### Example: How the Backend Loads a Video
+```python
+import os
+
+DATASET_ROOT = os.environ.get('VIDEO_DATASET_PATH', '/app/dataset')
+video_path = os.path.join(DATASET_ROOT, relative_path_from_db)
+```
+
+### Summary Table
+| Scenario                | What to Change                        | Where to Change                |
+|-------------------------|---------------------------------------|-------------------------------|
+| Using Docker            | Docker volume path                    | `docker-compose.yml`           |
+| Running locally         | `VIDEO_DATASET_PATH` env variable     | Shell or `.env` file           |
+| Hardcoded path in code  | Use env variable in code              | Python code (backend)          |
