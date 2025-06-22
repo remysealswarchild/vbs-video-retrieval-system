@@ -1,27 +1,27 @@
+// src/components/ConnectionStatus/ConnectionStatus.tsx
 import React from 'react'
-import { Circle } from 'lucide-react'
 import { useConnectionStatus } from '../../hooks/useConnectionStatus'
 import styles from './ConnectionStatus.module.css'
 
-// ConnectionStatus: shows backend & dres status dots
+// ConnectionStatus: shows backend & DRES status dots
 export const ConnectionStatus: React.FC = () => {
   const { backend, dres } = useConnectionStatus()
-  const dot = (s: {isLoading:boolean,isError:boolean}) =>
-    s.isLoading
-      ? <Circle size={12} className={styles.dotGray} />
+
+  const renderDot = (s: { isLoading: boolean; isError: boolean }) => {
+    const className = s.isLoading
+      ? styles.dotGray
       : s.isError
-      ? <Circle size={12} className={styles.dotRed} />
-      : <Circle size={12} className={styles.dotGreen} />
+      ? styles.dotRed
+      : styles.dotGreen
+
+    return <span className={`${styles.dot} ${className}`} />
+  }
 
   return (
     <div className={styles.statusRoot}>
       <div className={styles.statusItem}>
-        {dot(backend)}<span>Backend</span>
-      </div>
-      <div className={styles.statusItem}>
-        {dot(dres)}<span>DRES</span>
+        {renderDot(dres)} <span>DRES</span>
       </div>
     </div>
   )
 }
-

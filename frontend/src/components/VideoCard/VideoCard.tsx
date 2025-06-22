@@ -1,14 +1,13 @@
-import React, { useState, useRef } from 'react';
-import { submitVideoToDRES, DRESSubmissionResult } from '../../hooks/useDRES';
+// src/components/VideoCard/VideoCard.tsx
+import React, { useState, useRef, useContext } from 'react';
+import DRESContext from '../../context/DRESContext';
 import styles from './VideoCard.module.css';
 
-/**
- * Video interface for both mock data and backend API responses.
- */
+/* ────────── Types ────────── */
 export interface Video {
-  id: number | string;
+  id: string | number;
   title: string;
-  video_path: string; // full URL or relative path to the MP4
+  video_path: string;
   duration: number;
   score?: number;
   timestamp?: number;
@@ -17,86 +16,64 @@ export interface Video {
   dominant_colors?: [number, number, number][];
 }
 
-/**
- * VideoCard component that displays a single video with metadata,
- * optional overlays for playback and timestamp submission.
- */
+interface SubmissionResult {
+  success: boolean;
+  message: string;
+}
+
+/* ────────── Component ────────── */
 export const VideoCard: React.FC<{
   video: Video;
-  onSubmit?: (id: string | number, timestamp: number) => void;
-  currentQueryId?: string; // For DRES integration
-  enableDRES?: boolean; // Enable DRES submission mode
-}> = ({ video, onSubmit, currentQueryId, enableDRES = false }) => {
+  onSubmit?: (id: string | number, ts: number) => void; // optional
+  enableDRES?: boolean;                                 // true = DRES button
+}> = ({ video, onSubmit, enableDRES = true }) => {
+  /* local state */
   const [showPlayer, setShowPlayer] = useState(false);
   const [showSubmit, setShowSubmit] = useState(false);
-  const [ts, setTs] = useState(video.timestamp ?? 0);
-  const [submitting, setSubmitting] = useState(false);
-  const [submissionResult, setSubmissionResult] = useState<DRESSubmissionResult | null>(null);
-  const submitVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [ts, setTs]                   = useState(video.timestamp ?? 0);
+  const [submitting, setSubmitting]   = useState(false);
+  const [result, setResult]           = useState<SubmissionResult | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
+  /* DRES context */
+  const dres  = useContext(DRESContext);
+
+  /* helpers */
   const closePlayer = () => setShowPlayer(false);
   const closeSubmit = () => {
     setTs(video.timestamp ?? 0);
     setShowSubmit(false);
-    setSubmissionResult(null);
+    setResult(null);
   };
+  const videoUrl    = video.video_path;
+  const videoId     = video.video_path.split('/').pop()?.replace('.mp4', '') || video.id.toString();
 
-  const videoUrl = video.video_path;
-
-  // Extract video ID from video path or title
-  const extractVideoId = (): string => {
-    // Try to extract from video_path first
-    if (video.video_path.includes('/')) {
-      const parts = video.video_path.split('/');
-      const filename = parts[parts.length - 1];
-      if (filename.includes('.mp4')) {
-        return filename.replace('.mp4', '');
-      }
-    }
-    
-    // Fallback to extracting from title
-    const titleMatch = video.title.match(/Video (\d+)/);
-    if (titleMatch) {
-      return titleMatch[1];
-    }
-    
-    // Last resort: use the video id
-    return video.id.toString();
-  };
-
+  /* submission handler */
   const handleSubmit = async () => {
-    if (enableDRES && currentQueryId) {
-      // Submit to DRES
+    /* → DRES mode if enabled + logged in */
+    if (enableDRES && dres.isLoggedIn) {
       setSubmitting(true);
       try {
-        const videoId = extractVideoId();
-        const result = await submitVideoToDRES(currentQueryId, videoId, ts, video.score || 1.0);
-        setSubmissionResult(result);
-        
-        if (result.success) {
-          // Auto-close after successful submission
-          setTimeout(() => {
-            closeSubmit();
-          }, 2000);
-        }
-      } catch (error) {
-        setSubmissionResult({
-          success: false,
-          message: 'Failed to submit to DRES'
-        });
+        await dres.submit(videoId, ts);
+        setResult({ success: true, message: 'Submitted to DRES ✅' });
+        setTimeout(closeSubmit, 1800);
+      } catch (err) {
+        console.error(err);
+        setResult({ success: false, message: 'Failed to submit ❌' });
       } finally {
         setSubmitting(false);
       }
     } else {
-      // Use original onSubmit callback
+      /* → fallback to local handler */
       onSubmit?.(video.id, ts);
       closeSubmit();
     }
   };
 
+  /* ────────── Render ────────── */
   return (
     <>
-      {/* ────────── PLAYER OVERLAY ────────── */}
+      {/* ═══ PLAYER OVERLAY ═══ */}
       {showPlayer && (
         <div className={styles.overlay}>
           <div className={styles.modal}>
@@ -104,11 +81,7 @@ export const VideoCard: React.FC<{
             <video
               autoPlay
               controls
-              onPlay={e => {
-                if (video.timestamp != null) {
-                  e.currentTarget.currentTime = video.timestamp - 0.5;
-                }
-              }}
+              onPlay={e => { if (video.timestamp) e.currentTarget.currentTime = video.timestamp - 0.5; }}
               style={{ width: '100%', borderRadius: 8, background: '#000' }}
             >
               <source src={videoUrl} type="video/mp4" />
@@ -117,26 +90,23 @@ export const VideoCard: React.FC<{
         </div>
       )}
 
-      {/* ────────── SUBMIT OVERLAY ────────── */}
+      {/* ═══ SUBMIT OVERLAY ═══ */}
       {showSubmit && (
         <div className={styles.overlay}>
           <div className={styles.modal}>
             <button className={styles.close} onClick={closeSubmit}>×</button>
+
             <video
-              ref={submitVideoRef}
+              ref={videoRef}
               autoPlay
               controls
-              onPlay={e => {
-                if (video.timestamp != null) {
-                  e.currentTarget.currentTime = video.timestamp - 0.5;
-                }
-              }}
+              onPlay={e => { if (video.timestamp) e.currentTarget.currentTime = video.timestamp - 0.5; }}
               style={{ width: '100%', borderRadius: 8, background: '#000', marginBottom: 12 }}
             >
               <source src={videoUrl} type="video/mp4" />
             </video>
 
-            <button className={styles.small} onClick={() => setTs(submitVideoRef.current?.currentTime ?? ts)}>
+            <button className={styles.small} onClick={() => setTs(videoRef.current?.currentTime ?? ts)}>
               Update timestamp
             </button>
 
@@ -149,67 +119,49 @@ export const VideoCard: React.FC<{
                 value={ts}
                 onChange={e => {
                   const v = parseFloat(e.target.value);
-                  submitVideoRef.current?.fastSeek?.(v);
+                  videoRef.current?.fastSeek?.(v);
                   setTs(v);
                 }}
               />
             </div>
 
-            {/* DRES submission info */}
-            {enableDRES && currentQueryId && (
-              <div className={styles.dresInfo}>
-                <p><strong>DRES Submission</strong></p>
-                <p>Query ID: {currentQueryId}</p>
-                <p>Video ID: {extractVideoId()}</p>
-                <p>Timestamp: {ts.toFixed(3)}s</p>
+            {/* feedback */}
+            {result && (
+              <div className={`${styles.submissionResult} ${result.success ? styles.success : styles.error}`}>
+                {result.message}
               </div>
             )}
 
-            {/* Submission result feedback */}
-            {submissionResult && (
-              <div className={`${styles.submissionResult} ${submissionResult.success ? styles.success : styles.error}`}>
-                <p>{submissionResult.message}</p>
-              </div>
-            )}
-
-            <button 
-              className={styles.submitBtn} 
+            <button
+              className={styles.submitBtn}
               onClick={handleSubmit}
-              disabled={submitting}
+              disabled={
+                submitting ||
+                (enableDRES && !dres.isLoggedIn)  // button disabled if not logged in
+              }
             >
-              {submitting ? 'Submitting...' : (enableDRES ? 'Submit to DRES' : 'Submit')}
+              {submitting
+                ? 'Submitting…'
+                : enableDRES
+                ? 'Submit to DRES'
+                : 'Submit'}
             </button>
           </div>
         </div>
       )}
 
-      {/* ────────── MAIN VIDEO CARD ────────── */}
+      {/* ═══ CARD ═══ */}
       <div className={styles.card}>
-        <video
-          src={videoUrl}
-          controls
-          width="100%"
-          style={{ borderRadius: 8, background: '#000' }}
-        />
-
+        <video src={videoUrl} controls width="100%" style={{ borderRadius: 8, background: '#000' }} />
         <div className={styles.title}>{video.title}</div>
 
-        {/* Optional metadata (safe with ?. and fallback) */}
-        {video.score !== undefined && (
-          <p className={styles.meta}>Score : {video.score.toFixed(3)}</p>
-        )}
-        {video.timestamp !== undefined && (
-          <p className={styles.meta}>Timestamp : {video.timestamp.toFixed(3)}&nbsp;s</p>
-        )}
-        {(video.objects?.length ?? 0) > 0 && (
-          <p className={styles.meta}><strong>Objects:</strong> {video.objects!.join(', ')}</p>
-        )}
-        {(video.text?.length ?? 0) > 0 && (
-          <p className={styles.meta}><strong>Text:</strong> {video.text!.join(', ')}</p>
-        )}
-        {(video.dominant_colors?.length ?? 0) > 0 && (
+        {video.score !== undefined        && <p className={styles.meta}>Score: {video.score.toFixed(3)}</p>}
+        {video.timestamp !== undefined    && <p className={styles.meta}>Timestamp: {video.timestamp.toFixed(3)} s</p>}
+        {video.objects?.length            && <p className={styles.meta}><strong>Objects:</strong> {video.objects.join(', ')}</p>}
+        {video.text?.length               && <p className={styles.meta}><strong>Text:</strong> {video.text.join(', ')}</p>}
+        {video.dominant_colors?.length    && (
           <div className={styles.colorRow}>
-            {video.dominant_colors!.map((c, i) => (
+            {video.dominant_colors.map((c, i) => (
               <span
                 key={i}
                 className={styles.colorDot}
@@ -220,7 +172,6 @@ export const VideoCard: React.FC<{
           </div>
         )}
 
-        {/* Actions */}
         <div className={styles.actionsRow}>
           <button className={styles.small} onClick={() => setShowPlayer(true)}>Play</button>
           {(onSubmit || enableDRES) && (
