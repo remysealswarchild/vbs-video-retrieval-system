@@ -19,6 +19,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the backend code
 COPY query_server/ ./
 
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+
 EXPOSE 5000
 
 CMD ["python", "app.py"] 

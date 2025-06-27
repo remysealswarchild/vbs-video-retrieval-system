@@ -15,10 +15,12 @@ import psycopg2
 from pathlib import Path
 from datetime import datetime
 import logging
+import sys
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from query_server.config import DB_CONFIG
 
-DATASET_PATH = r"E:\image and video deep learning\vido project\vbs-video-retrieval-system\Dataset\V3C1-200" # change according to location of your video files
+DATASET_PATH = r"E:\image and video deep learning\trial_new_project\vbs-video-retrieval-system\Dataset\V3C1-200" # change according to location of your video files
 
 def setup_logging():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

@@ -1,110 +1,77 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM VBS Video Retrieval System - Deployment Script for Windows
-REM This script automates the complete deployment process
+REM === Video Retrieval System - Local Deployment Script ===
 
-echo 🚀 VBS Video Retrieval System - Deployment Script
-echo ==================================================
-
-REM Check if Docker is installed
-echo [INFO] Checking Docker installation...
-docker --version >nul 2>&1
+REM --- Start Database (Postgres with pgvector) ---
+echo [INFO] Starting Postgres database with Docker Compose...
+docker-compose up -d postgres
 if errorlevel 1 (
-    echo [ERROR] Docker is not installed. Please install Docker Desktop first.
-    pause
+    echo [ERROR] Failed to start Postgres with Docker Compose. Make sure Docker is running.
     exit /b 1
 )
 
-docker-compose --version >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Docker Compose is not installed. Please install Docker Compose first.
-    pause
-    exit /b 1
+REM --- Backend (Flask Query Server) Setup ---
+echo [INFO] Setting up Python backend (query_server)...
+cd query_server
+
+if not exist venv (
+    echo [INFO] Creating virtual environment...
+    python -m venv venv
 )
 
-echo [SUCCESS] Docker and Docker Compose are installed
+call venv\Scripts\activate
 
-REM Stop any existing containers
-echo [INFO] Stopping any existing containers...
-docker-compose down --remove-orphans >nul 2>&1
-echo [SUCCESS] Existing containers stopped
-
-REM Build and start services
-echo [INFO] Building and starting services...
-docker-compose up --build -d
-
-REM Wait for services to be ready
-echo [INFO] Waiting for services to be ready...
-timeout /t 10 /nobreak >nul
-echo [SUCCESS] Services started successfully
-
-REM Initialize database schema
-echo [INFO] Initializing database schema...
-
-REM Wait for PostgreSQL to be ready
-echo [INFO] Waiting for PostgreSQL to be ready...
-for /l %%i in (1,1,30) do (
-    docker exec video_retrieval_postgres pg_isready -U postgres -d videodb_creative_v2 >nul 2>&1
-    if not errorlevel 1 goto :db_ready
-    timeout /t 2 /nobreak >nul
-)
-:db_ready
-
-REM Copy schema file to container
-docker cp database/schema.sql video_retrieval_postgres:/schema.sql
-
-REM Load schema
-docker exec video_retrieval_postgres psql -U postgres -d videodb_creative_v2 -f /schema.sql >nul 2>&1
-if errorlevel 1 (
-    echo [WARNING] Schema might already be loaded or there was an issue
+if exist requirements.txt (
+    echo [INFO] Installing backend dependencies...
+    pip install --upgrade pip >nul
+    pip install -r requirements.txt
 ) else (
-    echo [SUCCESS] Database schema initialized
+    echo [ERROR] requirements.txt not found in query_server!
+    exit /b 1
 )
 
-REM Check if data import script exists
-if exist "scripts\import_data.py" (
-    echo [INFO] Data import script found
-    echo [INFO] Would you like to import data now? (y/n)
-    set /p response=
-    if /i "!response!"=="y" (
-        echo [INFO] Importing data...
-        python -m scripts.import_data
-        echo [SUCCESS] Data import completed
-    ) else (
-        echo [INFO] Skipping data import. You can run it later with: python -m scripts.import_data
+REM Start Flask backend in a new window
+start "Flask Backend" cmd /k "cd /d %cd% && call venv\Scripts\activate && set FLASK_APP=app.py && flask run --host=127.0.0.1 --port=5000"
+cd ..
+
+REM --- Frontend Setup ---
+echo [INFO] Setting up frontend...
+cd ../frontend
+
+if exist package.json (
+    if not exist node_modules (
+        echo [INFO] Installing frontend dependencies...
+        npm install
     )
+    echo [INFO] Starting frontend dev server...
+    start "Frontend" cmd /k "cd /d %cd% && npm run dev -- --port 5173"
 ) else (
-    echo [WARNING] Data import script not found at scripts/import_data.py
+    echo [ERROR] package.json not found in frontend!
+    exit /b 1
 )
+cd ..
 
-REM Test the system
-echo [INFO] Testing system components...
-
-REM Test backend health
-curl -s http://localhost:5000/health >nul 2>&1
-if errorlevel 1 (
-    echo [WARNING] Backend health check failed
+REM --- Prompt for Data Import ---
+echo.
+echo Would you like to import data into the database now? (y/n)
+set /p importdata=
+if /i "%importdata%"=="y" (
+    echo [INFO] Importing data using import_data.py...
+    pushd scripts
+    call ..\query_server\venv\Scripts\activate
+    ..\query_server\venv\Scripts\python.exe import_data.py
+    popd
+    echo [INFO] Data import completed.
 ) else (
-    echo [SUCCESS] Backend is responding
+    echo [INFO] Skipping data import. You can run it later with: python -m scripts.import_data
 )
-
-REM Test frontend
-curl -s http://localhost >nul 2>&1
-if errorlevel 1 (
-    echo [WARNING] Frontend accessibility check failed
-) else (
-    echo [SUCCESS] Frontend is accessible
-)
-
-REM Run comprehensive test if available
-if exist "test_system.py" (
-    echo [INFO] Running comprehensive system test...
-    python test_system.py
-)
-
+REM --- Print Access URLs ---
 echo.
 echo [SUCCESS] Deployment completed successfully!
+echo ---------------------------------------------
+echo Backend API:   http://127.0.0.1:5000
+
 echo.
 echo [INFO] Current system status:
 docker-compose ps

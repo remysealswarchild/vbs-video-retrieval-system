@@ -2,7 +2,7 @@ const BASE_URL = "https://vbs.videobrowsing.org"
 const USERNAME = 'TECHtalent13'
 const PASSWORD = 'QbaA6G4P'
 
-const EVALUATION_NAME = 'IVADL 2nd Test' 
+const EVALUATION_NAME = 'IVADL2025' 
 
 
 interface ILoginResponse {

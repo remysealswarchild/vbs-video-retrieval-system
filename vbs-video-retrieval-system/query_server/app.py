@@ -1,6 +1,6 @@
 # server.py
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 import psycopg2.extras
 from datetime import datetime
@@ -17,6 +17,13 @@ try:
 except ImportError:
     DRES_AVAILABLE = False
     print("Warning: DRES client not available. VBS competition features will be disabled.")
+
+try:
+    from flasgger import Swagger
+    swagger = Swagger(app)
+except ImportError:
+    swagger = None
+    print("[WARNING] flasgger not installed, Swagger UI will not be available.")
 
 app = Flask(__name__)
 CORS(app)
@@ -779,6 +786,70 @@ def dres_submit_batch():
             'error': 'Batch submission failed',
             'message': str(e)
         }), 500
+
+@app.route('/api/videos/<video_id>/frame/<frame_id>')
+def serve_frame_image(video_id, frame_id):
+    """Serve a frame image by video and frame id
+    ---
+    parameters:
+      - name: video_id
+        in: path
+        type: string
+        required: true
+      - name: frame_id
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: Frame image
+        content:
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+      404:
+        description: Frame not found
+    """
+    frame_path = os.path.join(VIDEO_DATASET_PATH, "V3C1-200", video_id, "keyframes", f"{frame_id}.jpeg")
+    if not os.path.exists(frame_path):
+        return jsonify({'error': 'Frame image not found'}), 404
+    return send_file(frame_path, mimetype='image/jpeg')
+
+@app.route('/api/explore/<video_id>', methods=['GET'])
+def explore_video(video_id):
+    """Return all frames for a video
+    ---
+    parameters:
+      - name: video_id
+        in: path
+        type: string
+        required: true
+    responses:
+      200:
+        description: List of frames
+        schema:
+          type: object
+          properties:
+            frames:
+              type: array
+              items:
+                type: object
+            count:
+              type: integer
+      500:
+        description: Error
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT * FROM video_moments WHERE video_id = %s ORDER BY timestamp_seconds", (video_id,))
+        frames = cursor.fetchall()
+        return jsonify({'frames': frames, 'count': len(frames)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)
